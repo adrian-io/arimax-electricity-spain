@@ -60,13 +60,25 @@ d12lnserie=diff(lnserie,12)
 plot(d12lnserie)
 abline(h=0)
 abline(h=mean(d12lnserie),col=2)
+
+monthplot(d12lnserie)
+
 ```
+```{r}
+cat("Var for d=0:", var(d12lnserie))
+```
+
 ```{r}
 d1d12lnserie=diff(d12lnserie,1)
 plot(d1d12lnserie)
 abline(h=0)
+cat("Var for d=1:", var(d1d12lnserie))
+
+# 2nd regular difference
+d1d1d12lnserie=diff(d1d12lnserie,1)
+plot(d1d1d12lnserie)
+abline(h=0)
+cat("\nVar for d=2:", var(d1d1d12lnserie))
 ```
-
-
-
+--> One regular difference is sufficient. For d=2 the var increases again --> overdifferencing
 
