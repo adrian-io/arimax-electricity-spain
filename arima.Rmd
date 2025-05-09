@@ -1,0 +1,14 @@
+---
+title: "arima"
+author: "Adrian Scholl"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# Final Project: ARIMAX model for Electricity Consumption in Spain
+
+```{r}
+serie=window(ts(read.table("ConsumElec.dat"),start=1990,freq=12))
+plot(serie, main="Gross internal consumption of electrical energy in Spain", ylab="GwH")
+abline(v=1985:2020,lty=3,col=4)
+```
+
