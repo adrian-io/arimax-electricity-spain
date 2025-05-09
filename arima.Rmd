@@ -68,5 +68,9 @@ abline(h=0)
 ```
 
 
+```{r}
+acf(d12lnserie, ylim=c(-1,1),col=c(2,rep(1,11)), lwd=2, lag.max=72)
+pacf(d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=72)
+```
 
 
