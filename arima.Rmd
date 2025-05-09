@@ -15,8 +15,6 @@ serie
 
 ## A.1 Identification
 
-
-
 ### Plot Annual Mean(12m) vs. Variance(12m) Boxplot -> Stationarity: constant var for each level 
 
 -> higher variance for at higher consumption level -> non-constant var: non-stationary
@@ -51,6 +49,9 @@ Then, variance seemingly constant!
 ### Month BoxPlot -> Yearly Seasonality
 ```{r}
 monthplot(lnserie)
+
+plot(decompose(lnserie))
+
 ```
 Clearly seasonality is present with s=12 months. Higher consumption in winter (for heating?). Higher again in July (AC cooling).
 
@@ -72,19 +73,120 @@ cat("Var for d=0:", var(d12lnserie))
 d1d12lnserie=diff(d12lnserie,1)
 plot(d1d12lnserie)
 abline(h=0)
+abline(h=mean(d1d12lnserie),col=2)
+
 cat("Var for d=1:", var(d1d12lnserie))
 
 # 2nd regular difference
 d1d1d12lnserie=diff(d1d12lnserie,1)
 plot(d1d1d12lnserie)
 abline(h=0)
+abline(h=mean(d1d1d12lnserie),col=2)
 cat("\nVar for d=2:", var(d1d1d12lnserie))
 ```
 --> One regular difference is sufficient. For d=2 the var increases again --> overdifferencing
 
 
 ```{r}
-acf(d12lnserie, ylim=c(-1,1),col=c(2,rep(1,11)), lwd=2, lag.max=72)
-pacf(d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=72)
+acf(d1d12lnserie, ylim=c(-1,1),col=c(2,rep(1,11)), lwd=2, lag.max=72)
+pacf(d1d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=72)
+```
+P=1, 2, 3
+p = 1-5
+
+MA(1) because ACF shows 1 significant lag and then not
+PACF shows few small spikes, with no clear decay pattern → no strong AR structure.
+
+ARIMA(0,1,1) ← (no AR, MA(1))
+ARIMA(1,1,1) ← (weak AR(1), MA(1))
+
+ACF:
+Spike at lag 12 (not shown clearly in cropped plot but often visible if seasonal) → implies Q = 1
+
+P=0 or 1
+
+--> not more due to sparsity
+
+SARIMA(0,1,1)(0,1,1)[12]	MA(1) + seasonal MA(1) — common baseline
+SARIMA(1,1,1)(0,1,1)[12]	Adds AR(1)
+SARIMA(1,1,1)(1,1,1)[12]	Full general model
+SARIMA(0,1,1)(1,1,0)[12]	MA(1) + seasonal AR(1)
+
+
+
+```{r}
+(mod1=arima(d1d12lnserie,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=12)))
+
+(data.frame("Estimate" = mod1$coef,"Lower Bound" = mod1$coef- 1.96 * diag(sqrt(mod1$var.coef)),"Upper Bound" = mod1$coef + 1.96 * diag(sqrt(mod1$var.coef))))
+
+```
+
+We use the CLT to assume that the estimates are asymptotically normal distributed and check if the 95% confidence interval of the estimates overlaps with 0.
+
+We see that the coefficient estimate for theta1 and Theta the 95% confidence interval does not overlap with 0. Thus we follow that the statement that these two coefficients are significant. The intercept is not statistically significant from 0, but with 95% confidence so small that we can neglect it and assume the intercept 0.
+
+
+```{r}
+# Define the models to test
+model_specs <- list(
+  "SARIMA(0,1,1)(0,1,1)[12]" = list(order = c(0,1,1), seasonal = c(0,1,1)),
+  "SARIMA(0,1,2)(0,1,2)[12]" = list(order = c(0,1,2), seasonal = c(0,1,2)),
+  "SARIMA(1,1,2)(1,1,2)[12]" = list(order = c(1,1,2), seasonal = c(1,1,2)),
+    "SARIMA(1,1,3)(1,1,3)[12]" = list(order = c(1,1,3), seasonal = c(1,1,3)),
+
+  "SARIMA(1,1,1)(0,1,1)[12]" = list(order = c(1,1,1), seasonal = c(0,1,1)),
+  "SARIMA(1,1,0)(1,1,0)[12]" = list(order = c(1,1,0), seasonal = c(1,1,0)),
+  "SARIMA(1,1,1)(1,1,1)[12]" = list(order = c(1,1,1), seasonal = c(1,1,1)),
+  "SARIMA(0,1,1)(1,1,0)[12]" = list(order = c(0,1,1), seasonal = c(1,1,0))
+)
+
+# Create an empty results list
+results <- list()
+
+# Loop through each model and fit
+for (model_name in names(model_specs)) {
+  spec <- model_specs[[model_name]]
+  fit <- arima(
+    d1d12lnserie,
+    order = spec$order,
+    seasonal = list(order = spec$seasonal, period = 12)
+  )
+
+  # Extract coefficient table with confidence intervals
+  se <- sqrt(diag(fit$var.coef))
+  coefs <- fit$coef
+  lower <- coefs - 1.96 * se
+  upper <- coefs + 1.96 * se
+  signif <- !(lower <= 0 & upper >= 0)
+
+  # Add to results list
+  results[[model_name]] <- list(
+    Coefs = coefs,
+    Significant = signif,
+    AIC = fit$aic,
+    BIC = AIC(fit, k = log(length(d1d12lnserie))),
+    LogLik = as.numeric(logLik(fit)),
+    Sigma2 = fit$sigma2
+  )
+}
+
+# Combine into a single data frame
+library(dplyr)
+
+summary_table <- bind_rows(lapply(names(results), function(name) {
+  res <- results[[name]]
+  data.frame(
+    Model = name,
+    AIC = res$AIC,
+    BIC = res$BIC,
+    LogLik = res$LogLik,
+    Sigma2 = res$Sigma2,
+    Coefs = paste(names(res$Coefs), round(res$Coefs, 3), sep = "=", collapse = "; "),
+    Significant = paste(names(res$Significant)[res$Significant], collapse = ", ")
+  )
+}), .id = NULL)
+
+# Print the summary table
+print(summary_table)
 ```
 
