@@ -10,5 +10,63 @@ output: html_document
 serie=window(ts(read.table("ConsumElec.dat"),start=1990,freq=12))
 plot(serie, main="Gross internal consumption of electrical energy in Spain", ylab="GwH")
 abline(v=1985:2020,lty=3,col=4)
+serie
 ```
+
+## A.1 Identification
+
+
+
+### Plot Annual Mean(12m) vs. Variance(12m) Boxplot -> Stationarity: constant var for each level 
+
+-> higher variance for at higher consumption level -> non-constant var: non-stationary
+```{r}
+m=apply(matrix(serie,nr=12),2,mean)
+v=apply(matrix(serie,nr=12),2,var)
+plot(m,v,xlab="Yearly Mean",ylab="Yearly Variance",main="serie")
+abline(lm(v~m),col=2,lty=3,lwd=2)
+
+boxplot(serie~floor(time(serie)))
+```
+Clearly, an increasing variance confirmed. Thus a log transformation applied to stabilize the variance!
+
+```{r}
+lnserie=log(serie)
+plot(lnserie)
+
+m=apply(matrix(lnserie,nr=12),2,mean)
+v=apply(matrix(lnserie,nr=12),2,var)
+plot(m,v,xlab="Yearly Mean",ylab="Yearly Variance",main="lnserie")
+abline(lm(v~m),col=2,lty=3,lwd=2)
+
+boxplot(lnserie~floor(time(lnserie)))
+```
+
+Then, variance seemingly constant!
+
+
+
+
+
+### Month BoxPlot -> Yearly Seasonality
+```{r}
+monthplot(lnserie)
+```
+Clearly seasonality is present with s=12 months. Higher consumption in winter (for heating?). Higher again in July (AC cooling).
+
+Eliminate the seasonality applying a seasonal difference.
+```{r}
+d12lnserie=diff(lnserie,12)
+plot(d12lnserie)
+abline(h=0)
+abline(h=mean(d12lnserie),col=2)
+```
+```{r}
+d1d12lnserie=diff(d12lnserie,1)
+plot(d1d12lnserie)
+abline(h=0)
+```
+
+
+
 
