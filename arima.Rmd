@@ -46,7 +46,7 @@ Then, variance seemingly constant!
 
 
 
-### Month BoxPlot -> Yearly Seasonality
+### Month Plot -> Yearly Seasonality
 ```{r}
 monthplot(lnserie)
 
@@ -63,19 +63,26 @@ abline(h=0)
 abline(h=mean(d12lnserie),col=2)
 
 monthplot(d12lnserie)
+plot(decompose(d12lnserie))
 
-```
-```{r}
-cat("Var for d=0:", var(d12lnserie))
+d12d12lnserie=diff(d12lnserie,12)
+d12d12d12lnserie=diff(d12d12lnserie,12)
+
+# Variance:
+cat("\nVar for D=0:", var(lnserie))
+cat("\nVar for D=1:", var(d12lnserie))
+cat("\nVar for D=2:", var(d12d12lnserie))
+cat("\nVar for D=3:", var(d12d12d12lnserie))
 ```
 
 ```{r}
+cat("\nVar for d=0:", var(d12lnserie))
+
 d1d12lnserie=diff(d12lnserie,1)
 plot(d1d12lnserie)
 abline(h=0)
 abline(h=mean(d1d12lnserie),col=2)
-
-cat("Var for d=1:", var(d1d12lnserie))
+cat("\nVar for d=1:", var(d1d12lnserie))
 
 # 2nd regular difference
 d1d1d12lnserie=diff(d1d12lnserie,1)
@@ -83,13 +90,21 @@ plot(d1d1d12lnserie)
 abline(h=0)
 abline(h=mean(d1d1d12lnserie),col=2)
 cat("\nVar for d=2:", var(d1d1d12lnserie))
-```
---> One regular difference is sufficient. For d=2 the var increases again --> overdifferencing
 
+d1d1d1d12lnserie=diff(d1d1d12lnserie,1)
+cat("\nVar for d=3:", var(d1d1d1d12lnserie))
+```
+--> Seasonal difference is sufficient. For d=1 or d=2 the var increases again --> overdifferencing
+
+MEAN CHECK via t-Test
+```{r}
+t.test(d12lnserie, mu = 0)
+```
+--> mean is significantly different from zero, so we include it in the models
 
 ```{r}
-acf(d1d12lnserie, ylim=c(-1,1),col=c(2,rep(1,11)), lwd=2, lag.max=120)
-pacf(d1d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=120)
+acf(d12lnserie, ylim=c(-1,1), col=c(2, rep(1,11)), lwd=2, lag.max=120, main=expression("ACF of " * B^{12} * log(X[t])))
+pacf(d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=120, main=expression("PACF of " * B^{12} * log(X[t])))
 ```
 #### Seasonal Autoregressive Part P
 We only take into account the red lags that are multiple of the seasonal period; for s=12, only lags 12, 24, 36, 48 and so on are considered.
@@ -99,15 +114,15 @@ PACF shows 2 significantly negative lags indicating the possibility of a AR(2) p
 #### Seasonal Moving Average Part Q
 ACF shows 1 clear significant negative lag --> Clear MA(1) model behavior with Q=1 and negative coefficient. No signs for Q=2, clearly insignificant.
 PACF also shows decaying behavior with only 2 strictly significant lags with rather small values. After that still some small, but with 95% confidence significant value -> due to noise or AR/seasonal effects 
---> Q=1
+--> Q=0,1
 
 -> in total ACF and PACF rather point to a SMA model than a SAR model. 
 
 #### Regular Autoregressive Part p
 - We observe a ACF with not clearly exponentially decaying pattern. Rather 1-3 significant spikes and then insignifcant.
 - The first lags 5 are all significantly negative, only then the lags start to become weaker before they increase before the end of the due to the seasonal correlation behavior.
-- Like in the SAR case, we still check all model combinations with p=0,1,2 while p=0 seems the most suitable from the ACF and PACF plots. Model with higher p are discarded due to the risk of overfitting and a preference towards parsimonoius models.
--->p=0,1,2
+- Like in the SAR case, we still check all model combinations with p=0,1,2,3,4,5 while p=0 seems the most suitable from the ACF and PACF plots. Model with higher p are discarded due to the risk of overfitting and a preference towards parsimonoius models.
+-->p=0,1,2,3,4,5
 
 
 #### Regular Moving Avergae Part q
@@ -117,14 +132,6 @@ PACF also shows decaying behavior with only 2 strictly significant lags with rat
 
 
 ### Conclusion:
-
-SARIMA(0,1,1)(0,1,1)[12]	MA(1) + seasonal MA(1) — common baseline
-SARIMA(1,1,1)(0,1,1)[12]	Adds AR(1)
-SARIMA(1,1,1)(1,1,1)[12]	Full general model
-SARIMA(0,1,1)(1,1,1)[12]	MA(1) + seasonal AR(1)
-
-
-
 We use the CLT to assume that the estimates are asymptotically normal distributed and check if the 95% confidence interval of the estimates overlaps with 0.
 
 We see that the coefficient estimate for theta1 and Theta the 95% confidence interval does not overlap with 0. Thus we follow that the statement that these two coefficients are significant. The intercept is not statistically significant from 0, but with 95% confidence so small that we can neglect it and assume the intercept 0.
@@ -141,9 +148,9 @@ Seasonal MA (Q):
 
 Seasonal period: 12
 
-Differencing: d = 1, D = 1
+Differencing: d = 0, D = 1
 
-To avoid overparameterization (too many parameters relative to data), we’ll limit total parameters (p + q + P + Q ≤ 6) and exclude redundant/ill-posed combinations.
+To avoid overparameterization (too many parameters relative to data), we’ll limit total parameters (p + q + P + Q ≤ 10) and exclude redundant/ill-posed combinations.
 
 ```{r}
 library(dplyr)
@@ -151,20 +158,19 @@ library(dplyr)
 # Define the models to test under the constraints
 model_specs <- list()
 
-for (p in 0:2) {
-  for (q in 0:3) {
-    for (P in 0:2) {
-      for (Q in 0:1) {
+for (p in 0:4) {
+  for (q in 0:10) {
+    for (P in 0:3) {
+      for (Q in 0:4) {
         total_order <- p + q + P + Q
-        if (total_order <= 6) { # restriction to prevent overparametrization
-          model_name <- sprintf("SARIMA(%d,1,%d)(%d,1,%d)[12]", p, q, P, Q)
-          model_specs[[model_name]] <- list(order = c(p,1,q), seasonal = c(P,1,Q), ParamCount = total_order)
+        if (total_order <= 10) { # restriction to prevent overparametrization
+          model_name <- sprintf("SARIMA(%d,0,%d)(%d,1,%d)[12]", p, q, P, Q)
+          model_specs[[model_name]] <- list(order = c(p,0,q), seasonal = c(P,0,Q), ParamCount = total_order)
         }
       }
     }
   }
 }
-
 results <- list()
 
 # Fit all models with warning/error handling
@@ -175,10 +181,10 @@ for (model_name in names(model_specs)) {
   fit <- withCallingHandlers(
     tryCatch({
       arima(
-        d1d12lnserie,
+        d12lnserie,
         order = spec$order,
         seasonal = list(order = spec$seasonal, period = 12),
-        method = "ML"
+        include.mean = TRUE
       )
     }, error = function(e) {
       status <<- paste("Error:", e$message)
@@ -201,7 +207,7 @@ for (model_name in names(model_specs)) {
       Coefs = coefs,
       Significant = signif,
       AIC = fit$aic,
-      BIC = AIC(fit, k = log(length(d1d12lnserie))),
+      BIC = AIC(fit, k = log(length(lnserie))),
       LogLik = as.numeric(logLik(fit)),
       Sigma2 = fit$sigma2,
       Status = status,
@@ -220,6 +226,7 @@ for (model_name in names(model_specs)) {
     )
   }
 }
+library(dplyr)
 
 # Summarize results
 summary_table <- bind_rows(lapply(names(results), function(name) {
@@ -231,45 +238,56 @@ summary_table <- bind_rows(lapply(names(results), function(name) {
     LogLik = res$LogLik,
     Sigma2 = res$Sigma2,
     Coefs = if (!is.null(res$Coefs) && is.numeric(res$Coefs)) paste(names(res$Coefs), round(res$Coefs, 3), sep = "=", collapse = "; ") else NA,
-    Insignificant = if (!is.null(res$Significant) && is.logical(res$Significant)) paste(names(res$Significant)[!res$Significant], collapse = ", ") else NA,
+    Insignificant = if (!is.null(res$Significant) && is.logical(res$Significant)) {
+  insignificant <- setdiff(
+    names(res$Significant)[!res$Significant],
+    c("intercept", "mean")  # exclude intercept/mean from filtering
+  )
+  if (length(insignificant) > 0) paste(insignificant, collapse = ", ") else ""
+} else NA,
+
     ParamCount = res$ParamCount,
     Status = res$Status
   )
 }), .id = NULL)
 
-# Print the tables sorted by AIC and BIC
-summary_table_aic <- summary_table %>% arrange(AIC)
-summary_table_bic <- summary_table %>% arrange(BIC)
+# Filter out models with any insignificant parameters
+summary_table_filtered <- summary_table %>%
+  filter(is.na(Insignificant) | Insignificant == "")
 
-cat("\nSorted by AIC:\n")
+# Sort by AIC and BIC
+summary_table_aic <- summary_table_filtered %>% arrange(AIC)
+summary_table_bic <- summary_table_filtered %>% arrange(BIC)
+
+cat("\nSorted by AIC (only models with all significant params):\n")
 print(summary_table_aic)
 
-cat("\nSorted by BIC:\n")
+cat("\nSorted by BIC (only models with all significant params):\n")
 print(summary_table_bic)
+
 ```
 ### Final Model Choice
 
-p=0
-q=1 or q=3
-Q=1
-P=2
-
-SARIMA(0,1,3)(2,1,1) is close to best (2nd best) AIC, BIC and can be very well justified from ACF, PACF plots
-However, its big model with 6 coefficients, but all significant.
-
+#### Model 1: SARIMA(2,0,1)(0,1,1)[12]
 
 ```{r}
 (mod1 = arima(
-        d1d12lnserie,
-        order=c(0,1,3),
-        seasonal = list(order=c(2,1,1), period = 12)))
+        d12lnserie,
+        order=c(2,0,1),
+        seasonal = list(order=c(0,0,1), period = 12), #D=0 as we use d12lnserie
+        include.mean = TRUE
+))
 ```
-SARIMA(0,1,1)(2,1,1)[12]	
+
+#### Model 2: SARIMA(1,0,2)(0,1,1)[12]	
+
+
 ```{r}
 (mod2 = arima(
-        d1d12lnserie,
-        order=c(0,1,1),
-        seasonal = list(order=c(2,1,1), period = 12)))
+        d12lnserie,
+        order=c(1,0,2),
+        seasonal = list(order=c(0,0,1), period = 12), #D=0 as we use d12lnserie
+        include.mean = TRUE))
 ```
 ## A.2 Validation
 
@@ -296,18 +314,21 @@ validation=function(model,dades){
   hist(resid,breaks=20,freq=FALSE)
   curve(dnorm(x,mean=mean(resid),sd=sd(resid)),col=2,add=T)
   
+  # ACF & PACF of residuals
+  par(mfrow = c(1, 2))
+  acf(resid, ylim = c(-1, 1), lag.max = 60, col = c(2, rep(1, s - 1)), lwd = 1,
+      main = "ACF of Residuals")
+  pacf(resid, ylim = c(-1, 1), lag.max = 60, col = c(rep(1, s - 1), 2), lwd = 1,
+       main = "PACF of Residuals")
+  par(mfrow = c(1, 1))
   
-  #ACF & PACF of residuals
-  par(mfrow=c(1,2))
-  acf(resid,ylim=c(-1,1),lag.max=60,col=c(2,rep(1,s-1)),lwd=1)
-  pacf(resid,ylim=c(-1,1),lag.max=60,col=c(rep(1,s-1),2),lwd=1)
-  par(mfrow=c(1,1))
-  
-  #ACF & PACF of square residuals 
-  par(mfrow=c(1,2))
-  acf(resid^2,ylim=c(-1,1),lag.max=60,col=c(2,rep(1,s-1)),lwd=1)
-  pacf(resid^2,ylim=c(-1,1),lag.max=60,col=c(rep(1,s-1),2),lwd=1)
-  par(mfrow=c(1,1))
+  # ACF & PACF of squared residuals
+  par(mfrow = c(1, 2))
+  acf(resid^2, ylim = c(-1, 1), lag.max = 60, col = c(2, rep(1, s - 1)), lwd = 1,
+      main = "ACF of Squared Residuals")
+  pacf(resid^2, ylim = c(-1, 1), lag.max = 60, col = c(rep(1, s - 1), 2), lwd = 1,
+       main = "PACF of Squared Residuals")
+  par(mfrow = c(1, 1))
   
   #Ljung-Box p-values
   par(mar=c(2,2,1,1))
@@ -328,7 +349,7 @@ validation=function(model,dades){
   cat("\n--------------------\n")
   print(psis[1:20])
   
-  plot(psis,type="h",main="Pesos Psis - MA infinito")
+  plot(psis,type="h",main="Psi Weigths - MA(inf)")
   
   #Model expressed as an AR infinity (pi-weights)
   pis=-ARMAtoMA(ar=-model$model$theta,ma=-model$model$phi,lag.max=72)
@@ -337,7 +358,7 @@ validation=function(model,dades){
   cat("\n--------------------\n")
   print(pis[1:20])
 
-  plot(pis,type="h",main="Pesos Pis - AR infinito")
+  plot(pis,type="h",main="Pi Weights - AR(inf)")
   
   cat("\nNormality Tests\n")
   cat("\n--------------------\n")
@@ -377,30 +398,81 @@ validation=function(model,dades){
   acf(dades, ylim=c(-1,1) ,lag.max=36,main="Sample ACF")
   
   plot(ARMAacf(model$model$phi,model$model$theta,lag.max=36),ylim=c(-1,1), 
-       type="h",xlab="Lag",  ylab="", main="ACF Teoric")
+       type="h",xlab="Lag",  ylab="", main="Theoretical ACF")
   abline(h=0)
   
   #Sample PACF vs. Teoric PACF
   pacf(dades, ylim=c(-1,1) ,lag.max=36,main="Sample PACF")
   
   plot(ARMAacf(model$model$phi,model$model$theta,lag.max=36, pacf=T),ylim=c(-1,1),
-       type="h", xlab="Lag", ylab="", main="PACF Teoric")
+       type="h", xlab="Lag", ylab="", main="Theoretical PACF")
   abline(h=0)
   par(mfrow=c(1,1))
 }
 ################# Fi Validación #################################
 ```
 
-
-### Validation of complexer model: SARIMA(0,1,3)(2,1,1)
 ```{r}
-validation(mod1,d1d12lnserie)
+check_stationarity_invertibility <- function(model, label = "Model") {
+  cat("\n========== ", label, " ==========\n")
+
+  # Stationarity (Causality) check
+  ar_roots <- Mod(polyroot(c(1, -model$model$phi)))
+  cat("\nModulus of AR Roots (Stationarity):\n", ar_roots, "\n")
+  if (all(ar_roots > 1)) {
+    cat("=> AR part is STATIONARY (causal)\n")
+  } else {
+    cat("=> AR part is NOT stationary!\n")
+  }
+
+  # Invertibility check
+  ma_roots <- Mod(polyroot(c(1, model$model$theta)))
+  cat("\nModulus of MA Roots (Invertibility):\n", ma_roots, "\n")
+  if (all(ma_roots > 1)) {
+    cat("=> MA part is INVERTIBLE\n")
+  } else {
+    cat("=> MA part is NOT invertible!\n")
+  }
+
+  # Psi-weights (MA(inf))
+  psis <- ARMAtoMA(ar = model$model$phi, ma = model$model$theta, lag.max = 72)
+  names(psis) <- paste("psi", 1:72)
+  cat("\nPsi-weights (MA(inf)):\n")
+  print(psis[1:20])
+  plot(psis, type = "h", main = paste("Psi Weights -", label))
+
+  # Pi-weights (AR(inf))
+  pis <- -ARMAtoMA(ar = -model$model$theta, ma = -model$model$phi, lag.max = 72)
+  names(pis) <- paste("pi", 1:72)
+  cat("\nPi-weights (AR(inf)):\n")
+  print(pis[1:20])
+  plot(pis, type = "h", main = paste("Pi Weights -", label))
+}
+
 ```
 
-### Validation of simpler model: SARIMA(0,1,1)(2,1,1)
+
+### Validation model 1: 
+```{r}
+validation(mod1, d12lnserie)
+```
+
+#### Stationarity and Inveritbility
 
 ```{r}
-validation(mod2,d1d12lnserie)
+check_stationarity_invertibility(mod1, "SARIMA(2,0,1)(0,1,1)")
+```
+
+
+### Validation model 1
+
+```{r}
+validation(mod2,lnserie)
+```
+#### Stationarity and Inveritbility
+
+```{r}
+check_stationarity_invertibility(mod2, "SARIMA(1,0,2)(0,1,1)")
 ```
 
 
