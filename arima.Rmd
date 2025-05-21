@@ -10,6 +10,9 @@ output: html_document
 serie=window(ts(read.table("ConsumElec.dat"),start=1990,freq=12))
 plot(serie, main="Gross internal consumption of electrical energy in Spain", ylab="GwH")
 abline(v=1985:2020,lty=3,col=4)
+
+plot(decompose(serie))
+
 serie
 ```
 
@@ -311,8 +314,13 @@ validation=function(model,dades){
   qqline(resid,col=2,lwd=2)
   
   ##Histogram of residuals with normal curve
-  hist(resid,breaks=20,freq=FALSE)
-  curve(dnorm(x,mean=mean(resid),sd=sd(resid)),col=2,add=T)
+  #hist(resid,breaks=20,freq=FALSE)
+  #curve(dnorm(x,mean=mean(resid),sd=sd(resid)),col=2,add=T)
+  # Histogram with normal overlay
+  hist(resid, breaks=20, freq=FALSE, main="Histogram of Residuals")
+  curve(dnorm(x, mean=mean(resid), sd=sd(resid)), col=2, add=TRUE, lwd=2)
+  
+  
   
   # ACF & PACF of residuals
   par(mfrow = c(1, 2))
@@ -457,20 +465,69 @@ check_stationarity_invertibility <- function(model, label = "Model") {
 validation(mod1, d12lnserie)
 ```
 
-#### Stationarity and Inveritbility
+### Validation model 2
+
+```{r}
+validation(mod2,d12lnserie)
+```
+
+
+### Mean zero Residuals
+```{r}
+t.test(mod1$residuals, mu = 0)
+sd(mod1$residuals)
+t.test(mod2$residuals, mu = 0)
+sd(mod2$residuals)
+
+```
+### Homoscedasticity
+
+```{r}
+check_heteroscedasticity <- function(model, data) {
+  require(lmtest)
+
+  resid <- residuals(model)
+  squared_resid <- resid^2
+  s <- frequency(get(model$series))
+
+  # 3 plots stacked vertically, increased height per plot
+  par(mfrow = c(3, 1))  # more margin for taller plots
+
+  # 1) Square Root of Absolute Residuals with scatter.smooth
+  scatter.smooth(sqrt(abs(resid)), main = "Square Root of Absolute Residuals",
+                 lpars = list(col = 2))
+
+  # 2) ACF of squared residuals
+  acf(squared_resid, main = "ACF of Squared Residuals", lag.max = 60, ylim = c(-1, 1))
+
+  # 3) PACF of squared residuals
+  pacf(squared_resid, main = "PACF of Squared Residuals", lag.max = 60, ylim = c(-1, 1))
+
+  # Breusch-Pagan test for heteroscedasticity
+  cat("\nBreusch-Pagan Test for Heteroscedasticity:\n")
+  obs <- get(model$series)
+  bp_test <- bptest(resid ~ I(obs - resid))
+  print(bp_test)
+  
+    if (bp_test$p.value < 0.05) {
+    cat("\n→ The Breusch-Pagan test suggests heteroscedasticity (p < 0.05).\n")
+  } else {
+    cat("\n→ No significant evidence of heteroscedasticity (p ≥ 0.05).\n")
+  }
+}
+```
+
+```{r}
+check_heteroscedasticity(mod1, d12lnserie)
+```
+
+
+
+### Stationarity and Inveritbility
 
 ```{r}
 check_stationarity_invertibility(mod1, "SARIMA(2,0,1)(0,1,1)")
 ```
-
-
-### Validation model 1
-
-```{r}
-validation(mod2,lnserie)
-```
-#### Stationarity and Inveritbility
-
 ```{r}
 check_stationarity_invertibility(mod2, "SARIMA(1,0,2)(0,1,1)")
 ```
