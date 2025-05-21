@@ -344,7 +344,7 @@ mod1EC.atip$sigma
 mod2EC.atip$sigma
 
 
-atipics=mod.atip$atip[order(mod.atip$atip[,1]),]
+atipics=mod1EC.atip$atip[order(mod1EC.atip$atip[,1]),]
 meses=c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic")
 
 data.frame(atipics,Fecha=paste(meses[(atipics[,1]-1)%%12+1],start(lnserie)[1]+((atipics[,1]-1)%/%12)),perc.Obs=exp(atipics[,3])*100)
@@ -355,9 +355,9 @@ d1d12serie1.lin=diff(diff(serie1.lin,12))
 serie2.lin=lineal(serie,mod2EC.atip$atip)
 d1d12serie2.lin=diff(diff(serie2.lin,12))
 
-(mod1EC.lin=arima(serie.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod1EC.lin=arima(serie1.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
 
-(mod2EC.lin=arima(serie.lin,order=c(1,1,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod2EC.lin=arima(serie2.lin,order=c(1,1,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
 
 mod1_EfecTD=coef(mod1EC.lin)["wTradDays"]*wTradDays
 mod1_EfecIN=coef(mod1EC.lin)["wEast"]*wEast
@@ -382,20 +382,20 @@ lines(serie)
 ultim=c(2018,12)
 
 
-serie.lin1=window(serie.lin,end=ultim+c(1,0))
-serie.lin2=window(serie.lin,end=ultim)
+serie.lin1=window(serie1.lin,end=ultim+c(1,0))
+serie.lin2=window(serie1.lin,end=ultim)
 wTradDays2=window(wTradDays,end=ultim)
 wEast2=window(wEast,end=ultim)
 
-(modEC.lin=arima(serie.lin1,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-(modEC.lin2=arima(serie.lin2,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2)))
+(mod1EC.lin=arima(serie.lin1,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod1EC.lin2=arima(serie.lin2,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2)))
 
 ```
 
 ```{r}
-pred=predict(modEC.lin2,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
+pred=predict(mod1EC.lin2,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
 predic=pred$pr
-wLS=sum(modEC.atip$atip[modEC.atip$atip$type_detected=="LS" & modEC.atip$atip$Obs<=length(serie)-12,3])
+wLS=sum(mod1EC.atip$atip[mod1EC.atip$atip$type_detected=="LS" & mod1EC.atip$atip$Obs<=length(serie)-12,3])
 pr<-ts(c(tail(serie2,1),predic+wLS),start=ultim,freq=12)
 
 
@@ -431,7 +431,7 @@ wTradDays3=Wtrad(data3)
 wEast3=Weaster(data3)
 pred=predict(modEC.lin,n.ahead=12,newxreg=data.frame(wTradDays3,wEast3))
 predic=pred$pr
-wLS=sum(modEC.atip$atip[modEC.atip$atip$type_detected=="LS",3])
+wLS=sum(mod1EC.atip$atip[mod1EC.atip$atip$type_detected=="LS",3])
 pr<-ts(c(serie[length(serie)],predic+wLS),start=ultim+c(1,0),freq=12)
 se<-ts(c(0,pred$se),start=ultim+c(1,0),freq=12)
 
