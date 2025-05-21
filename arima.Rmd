@@ -10,6 +10,9 @@ output: html_document
 serie=window(ts(read.table("ConsumElec.dat"),start=1990,freq=12))
 plot(serie, main="Gross internal consumption of electrical energy in Spain", ylab="GwH")
 abline(v=1985:2020,lty=3,col=4)
+
+plot(decompose(serie))
+
 serie
 ```
 
@@ -46,7 +49,7 @@ Then, variance seemingly constant!
 
 
 
-### Month BoxPlot -> Yearly Seasonality
+### Month Plot -> Yearly Seasonality
 ```{r}
 monthplot(lnserie)
 
@@ -63,19 +66,26 @@ abline(h=0)
 abline(h=mean(d12lnserie),col=2)
 
 monthplot(d12lnserie)
+plot(decompose(d12lnserie))
 
-```
-```{r}
-cat("Var for d=0:", var(d12lnserie))
+d12d12lnserie=diff(d12lnserie,12)
+d12d12d12lnserie=diff(d12d12lnserie,12)
+
+# Variance:
+cat("\nVar for D=0:", var(lnserie))
+cat("\nVar for D=1:", var(d12lnserie))
+cat("\nVar for D=2:", var(d12d12lnserie))
+cat("\nVar for D=3:", var(d12d12d12lnserie))
 ```
 
 ```{r}
+cat("\nVar for d=0:", var(d12lnserie))
+
 d1d12lnserie=diff(d12lnserie,1)
 plot(d1d12lnserie)
 abline(h=0)
 abline(h=mean(d1d12lnserie),col=2)
-
-cat("Var for d=1:", var(d1d12lnserie))
+cat("\nVar for d=1:", var(d1d12lnserie))
 
 # 2nd regular difference
 d1d1d12lnserie=diff(d1d12lnserie,1)
@@ -83,96 +93,116 @@ plot(d1d1d12lnserie)
 abline(h=0)
 abline(h=mean(d1d1d12lnserie),col=2)
 cat("\nVar for d=2:", var(d1d1d12lnserie))
-```
---> One regular difference is sufficient. For d=2 the var increases again --> overdifferencing
 
+d1d1d1d12lnserie=diff(d1d1d12lnserie,1)
+cat("\nVar for d=3:", var(d1d1d1d12lnserie))
+```
+--> Seasonal difference is sufficient. For d=1 or d=2 the var increases again --> overdifferencing
+
+MEAN CHECK via t-Test
+```{r}
+t.test(d12lnserie, mu = 0)
+```
+--> mean is significantly different from zero, so we include it in the models
 
 ```{r}
-acf(d1d12lnserie, ylim=c(-1,1),col=c(2,rep(1,11)), lwd=2, lag.max=72)
-pacf(d1d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=72)
-```
-P=1, 2, 3
-p = 1-5
-
-MA(1) because ACF shows 1 significant lag and then not
-PACF shows few small spikes, with no clear decay pattern → no strong AR structure.
-
-ARIMA(0,1,1) ← (no AR, MA(1))
-ARIMA(1,1,1) ← (weak AR(1), MA(1))
-
-ACF:
-Spike at lag 12 (not shown clearly in cropped plot but often visible if seasonal) → implies Q = 1
-
-P=0 or 1
-
---> not more due to sparsity
-
-SARIMA(0,1,1)(0,1,1)[12]	MA(1) + seasonal MA(1) — common baseline
-SARIMA(1,1,1)(0,1,1)[12]	Adds AR(1)
-SARIMA(1,1,1)(1,1,1)[12]	Full general model
-SARIMA(0,1,1)(1,1,0)[12]	MA(1) + seasonal AR(1)
-
-
-
-```{r}
-(mod1=arima(d1d12lnserie,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=12)))
-
-(data.frame("Estimate" = mod1$coef,"Lower Bound" = mod1$coef- 1.96 * diag(sqrt(mod1$var.coef)),"Upper Bound" = mod1$coef + 1.96 * diag(sqrt(mod1$var.coef))))
-
+acf(d12lnserie, ylim=c(-1,1), col=c(2, rep(1,11)), lwd=2, lag.max=120, main=expression("ACF of " * B^{12} * log(X[t])))
+pacf(d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=120, main=expression("PACF of " * B^{12} * log(X[t])))
 ```
 
-We use the CLT to assume that the estimates are asymptotically normal distributed and check if the 95% confidence interval of the estimates overlaps with 0.
+To systematically cover reasonable variants without overfitting, we want to test:
 
-We see that the coefficient estimate for theta1 and Theta the 95% confidence interval does not overlap with 0. Thus we follow that the statement that these two coefficients are significant. The intercept is not statistically significant from 0, but with 95% confidence so small that we can neglect it and assume the intercept 0.
+Non-seasonal AR (p): 0<=p<=4
 
+Non-seasonal MA (q): 0<=q<=10
+
+Seasonal AR (P): 0<=P<=3
+
+Seasonal MA (Q): 0<=Q<=4
+
+Seasonal period: 12
+
+Differencing: d = 0, D = 1
+
+To avoid overparameterization (too many parameters relative to data), we’ll limit total parameters (p + q + P + Q ≤ 10) and exclude redundant/ill-posed combinations.
 
 ```{r}
-# Define the models to test
-model_specs <- list(
-  "SARIMA(0,1,1)(0,1,1)[12]" = list(order = c(0,1,1), seasonal = c(0,1,1)),
-  "SARIMA(0,1,2)(0,1,2)[12]" = list(order = c(0,1,2), seasonal = c(0,1,2)),
-  "SARIMA(1,1,2)(1,1,2)[12]" = list(order = c(1,1,2), seasonal = c(1,1,2)),
-    "SARIMA(1,1,3)(1,1,3)[12]" = list(order = c(1,1,3), seasonal = c(1,1,3)),
-
-  "SARIMA(1,1,1)(0,1,1)[12]" = list(order = c(1,1,1), seasonal = c(0,1,1)),
-  "SARIMA(1,1,0)(1,1,0)[12]" = list(order = c(1,1,0), seasonal = c(1,1,0)),
-  "SARIMA(1,1,1)(1,1,1)[12]" = list(order = c(1,1,1), seasonal = c(1,1,1)),
-  "SARIMA(0,1,1)(1,1,0)[12]" = list(order = c(0,1,1), seasonal = c(1,1,0))
-)
-
-# Create an empty results list
-results <- list()
-
-# Loop through each model and fit
-for (model_name in names(model_specs)) {
-  spec <- model_specs[[model_name]]
-  fit <- arima(
-    d1d12lnserie,
-    order = spec$order,
-    seasonal = list(order = spec$seasonal, period = 12)
-  )
-
-  # Extract coefficient table with confidence intervals
-  se <- sqrt(diag(fit$var.coef))
-  coefs <- fit$coef
-  lower <- coefs - 1.96 * se
-  upper <- coefs + 1.96 * se
-  signif <- !(lower <= 0 & upper >= 0)
-
-  # Add to results list
-  results[[model_name]] <- list(
-    Coefs = coefs,
-    Significant = signif,
-    AIC = fit$aic,
-    BIC = AIC(fit, k = log(length(d1d12lnserie))),
-    LogLik = as.numeric(logLik(fit)),
-    Sigma2 = fit$sigma2
-  )
-}
-
-# Combine into a single data frame
 library(dplyr)
 
+# Define the models to test under the constraints
+model_specs <- list()
+
+for (p in 0:4) {
+  for (q in 0:10) {
+    for (P in 0:3) {
+      for (Q in 0:4) {
+        total_order <- p + q + P + Q
+        if (total_order <= 10) { # restriction to prevent overparametrization
+          model_name <- sprintf("SARIMA(%d,0,%d)(%d,1,%d)[12]", p, q, P, Q)
+          model_specs[[model_name]] <- list(order = c(p,0,q), seasonal = c(P,0,Q), ParamCount = total_order)
+        }
+      }
+    }
+  }
+}
+results <- list()
+
+# Fit all models with warning/error handling
+for (model_name in names(model_specs)) {
+  spec <- model_specs[[model_name]]
+  status <- "OK"
+
+  fit <- withCallingHandlers(
+    tryCatch({
+      arima(
+        d12lnserie,
+        order = spec$order,
+        seasonal = list(order = spec$seasonal, period = 12),
+        include.mean = TRUE
+      )
+    }, error = function(e) {
+      status <<- paste("Error:", e$message)
+      return(NULL)
+    }),
+    warning = function(w) {
+      status <<- paste("Warning:", conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  if (!is.null(fit)) {
+    se <- sqrt(diag(fit$var.coef))
+    coefs <- fit$coef
+    lower <- coefs - 1.96 * se
+    upper <- coefs + 1.96 * se
+    signif <- !(lower <= 0 & upper >= 0)
+
+    results[[model_name]] <- list(
+      Coefs = coefs,
+      Significant = signif,
+      AIC = fit$aic,
+      BIC = AIC(fit, k = log(length(lnserie))),
+      LogLik = as.numeric(logLik(fit)),
+      Sigma2 = fit$sigma2,
+      Status = status,
+      ParamCount = spec$ParamCount
+    )
+  } else {
+    results[[model_name]] <- list(
+      Coefs = NA,
+      Significant = NA,
+      AIC = NA,
+      BIC = NA,
+      LogLik = NA,
+      Sigma2 = NA,
+      Status = status,
+      ParamCount = spec$ParamCount
+    )
+  }
+}
+library(dplyr)
+
+# Summarize results
 summary_table <- bind_rows(lapply(names(results), function(name) {
   res <- results[[name]]
   data.frame(
@@ -181,22 +211,310 @@ summary_table <- bind_rows(lapply(names(results), function(name) {
     BIC = res$BIC,
     LogLik = res$LogLik,
     Sigma2 = res$Sigma2,
-    Coefs = paste(names(res$Coefs), round(res$Coefs, 3), sep = "=", collapse = "; "),
-    Significant = paste(names(res$Significant)[res$Significant], collapse = ", ")
+    Coefs = if (!is.null(res$Coefs) && is.numeric(res$Coefs)) paste(names(res$Coefs), round(res$Coefs, 3), sep = "=", collapse = "; ") else NA,
+    Insignificant = if (!is.null(res$Significant) && is.logical(res$Significant)) {
+  insignificant <- setdiff(
+    names(res$Significant)[!res$Significant],
+    c("intercept", "mean")  # exclude intercept/mean from filtering
+  )
+  if (length(insignificant) > 0) paste(insignificant, collapse = ", ") else ""
+} else NA,
+
+    ParamCount = res$ParamCount,
+    Status = res$Status
   )
 }), .id = NULL)
 
-# Print the summary table
-print(summary_table)
+# Filter out models with any insignificant parameters
+summary_table_filtered <- summary_table %>%
+  filter(is.na(Insignificant) | Insignificant == "")
+
+# Sort by AIC and BIC
+summary_table_aic <- summary_table_filtered %>% arrange(AIC)
+summary_table_bic <- summary_table_filtered %>% arrange(BIC)
+
+cat("\nSorted by AIC (only models with all significant params):\n")
+print(summary_table_aic)
+
+cat("\nSorted by BIC (only models with all significant params):\n")
+print(summary_table_bic)
+
 ```
+### Final Model Choice
+
+#### Model 1: SARIMA(2,0,1)(0,1,1)[12]
+
+```{r}
+(mod1 = arima(
+        d12lnserie,
+        order=c(2,0,1),
+        seasonal = list(order=c(0,0,1), period = 12), #D=0 as we use d12lnserie
+        include.mean = TRUE
+))
+(data.frame("Estimate" = mod1$coef,"Lower Bound" = mod1$coef- 1.96 * diag(sqrt(mod1$var.coef)),"Upper Bound" = mod1$coef + 1.96 * diag(sqrt(mod1$var.coef))))
+
+```
+
+#### Model 2: SARIMA(1,0,2)(0,1,1)[12]	
 
 
 ```{r}
+(mod2 = arima(
+        d12lnserie,
+        order=c(1,0,2),
+        seasonal = list(order=c(0,0,1), period = 12), #D=0 as we use d12lnserie
+        include.mean = TRUE))
+
+(data.frame("Estimate" = mod2$coef,"Lower Bound" = mod2$coef- 1.96 * diag(sqrt(mod2$var.coef)),"Upper Bound" = mod2$coef + 1.96 * diag(sqrt(mod2$var.coef))))
+
+```
+## A.2 Validation
+
+
+```{r}
+#################Validation#################################
+validation=function(model,dades){
+  s=frequency(get(model$series))
+  resid=model$residuals
+  par(mfrow=c(2,2),mar=c(3,3,3,3))
+  #Residuals plot
+  plot(resid,main="Residuals")
+  abline(h=0)
+  abline(h=c(-3*sd(resid),3*sd(resid)),lty=3,col=4)
+  #Square Root of absolute values of residuals (Homocedasticity)
+  scatter.smooth(sqrt(abs(resid)),main="Square Root of Absolute residuals",
+                 lpars=list(col=2))
+  
+  #Normal plot of residuals
+  qqnorm(resid)
+  qqline(resid,col=2,lwd=2)
+  
+  ##Histogram of residuals with normal curve
+  #hist(resid,breaks=20,freq=FALSE)
+  #curve(dnorm(x,mean=mean(resid),sd=sd(resid)),col=2,add=T)
+  # Histogram with normal overlay
+  hist(resid, breaks=20, freq=FALSE, main="Histogram of Residuals")
+  curve(dnorm(x, mean=mean(resid), sd=sd(resid)), col=2, add=TRUE, lwd=2)
+  
+  
+  
+  # ACF & PACF of residuals
+  par(mfrow = c(1, 2))
+  acf(resid, ylim = c(-1, 1), lag.max = 60, col = c(2, rep(1, s - 1)), lwd = 1,
+      main = "ACF of Residuals")
+  pacf(resid, ylim = c(-1, 1), lag.max = 60, col = c(rep(1, s - 1), 2), lwd = 1,
+       main = "PACF of Residuals")
+  par(mfrow = c(1, 1))
+  
+  # ACF & PACF of squared residuals
+  par(mfrow = c(1, 2))
+  acf(resid^2, ylim = c(-1, 1), lag.max = 60, col = c(2, rep(1, s - 1)), lwd = 1,
+      main = "ACF of Squared Residuals")
+  pacf(resid^2, ylim = c(-1, 1), lag.max = 60, col = c(rep(1, s - 1), 2), lwd = 1,
+       main = "PACF of Squared Residuals")
+  par(mfrow = c(1, 1))
+  
+  #Ljung-Box p-values
+  par(mar=c(2,2,1,1))
+  tsdiag(model,gof.lag=7*s)
+  cat("\n--------------------------------------------------------------------\n")
+  print(model)
+  
+  #Stationary and Invertible
+  cat("\nModul of AR Characteristic polynomial Roots: ", 
+      Mod(polyroot(c(1,-model$model$phi))),"\n")
+  cat("\nModul of MA Characteristic polynomial Roots: ",
+      Mod(polyroot(c(1,model$model$theta))),"\n")
+  
+  #Model expressed as an MA infinity (psi-weights)
+  psis=ARMAtoMA(ar=model$model$phi,ma=model$model$theta,lag.max=72)
+  names(psis)=paste("psi",1:72)
+  cat("\nPsi-weights (MA(inf))\n")
+  cat("\n--------------------\n")
+  print(psis[1:20])
+  
+  plot(psis,type="h",main="Psi Weigths - MA(inf)")
+  
+  #Model expressed as an AR infinity (pi-weights)
+  pis=-ARMAtoMA(ar=-model$model$theta,ma=-model$model$phi,lag.max=72)
+  names(pis)=paste("pi",1:72)
+  cat("\nPi-weights (AR(inf))\n")
+  cat("\n--------------------\n")
+  print(pis[1:20])
+
+  plot(pis,type="h",main="Pi Weights - AR(inf)")
+  
+  cat("\nNormality Tests\n")
+  cat("\n--------------------\n")
+ 
+  ##Shapiro-Wilks Normality test
+  print(shapiro.test(resid(model)))
+
+  suppressMessages(require(nortest,quietly=TRUE,warn.conflicts=FALSE))
+  ##Anderson-Darling test
+  print(ad.test(resid(model)))
+  
+  suppressMessages(require(tseries,quietly=TRUE,warn.conflicts=FALSE))
+  ##Jarque-Bera test
+  print(jarque.bera.test(resid(model)))
+  
+  cat("\nHomoscedasticity Test\n")
+  cat("\n--------------------\n")
+  suppressMessages(require(lmtest,quietly=TRUE,warn.conflicts=FALSE))
+  ##Breusch-Pagan test
+  obs=get(model$series)
+  print(bptest(resid(model)~I(obs-resid(model))))
+  
+  cat("\nIndependence Tests\n")
+  cat("\n--------------------\n")
+  
+  ##Durbin-Watson test
+  print(dwtest(resid(model)~I(1:length(resid(model)))))
+  
+  ##Ljung-Box test
+  cat("\nLjung-Box test\n")
+  print(t(apply(matrix(c(1:4,(1:4)*s)),1,function(el) {
+    te=Box.test(resid(model),type="Ljung-Box",lag=el)
+    c(lag=(te$parameter),statistic=te$statistic[[1]],p.value=te$p.value)})))
+  
+  #Sample ACF vs. Teoric ACF
+  par(mfrow=c(2,2),mar=c(3,3,3,3))
+  acf(dades, ylim=c(-1,1) ,lag.max=36,main="Sample ACF")
+  
+  plot(ARMAacf(model$model$phi,model$model$theta,lag.max=36),ylim=c(-1,1), 
+       type="h",xlab="Lag",  ylab="", main="Theoretical ACF")
+  abline(h=0)
+  
+  #Sample PACF vs. Teoric PACF
+  pacf(dades, ylim=c(-1,1) ,lag.max=36,main="Sample PACF")
+  
+  plot(ARMAacf(model$model$phi,model$model$theta,lag.max=36, pacf=T),ylim=c(-1,1),
+       type="h", xlab="Lag", ylab="", main="Theoretical PACF")
+  abline(h=0)
+  par(mfrow=c(1,1))
+}
+################# Fi Validación #################################
+```
+
+```{r}
+check_stationarity_invertibility <- function(model, label = "Model") {
+  cat("\n========== ", label, " ==========\n")
+
+  # Stationarity (Causality) check
+  ar_roots <- Mod(polyroot(c(1, -model$model$phi)))
+  cat("\nModulus of AR Roots (Stationarity):\n", ar_roots, "\n")
+  if (all(ar_roots > 1)) {
+    cat("=> AR part is STATIONARY (causal)\n")
+  } else {
+    cat("=> AR part is NOT stationary!\n")
+  }
+
+  # Invertibility check
+  ma_roots <- Mod(polyroot(c(1, model$model$theta)))
+  cat("\nModulus of MA Roots (Invertibility):\n", ma_roots, "\n")
+  if (all(ma_roots > 1)) {
+    cat("=> MA part is INVERTIBLE\n")
+  } else {
+    cat("=> MA part is NOT invertible!\n")
+  }
+
+  # Psi-weights (MA(inf))
+  psis <- ARMAtoMA(ar = model$model$phi, ma = model$model$theta, lag.max = 72)
+  names(psis) <- paste("psi", 1:72)
+  cat("\nPsi-weights (MA(inf)):\n")
+  print(psis[1:20])
+  plot(psis, type = "h", main = paste("Psi Weights -", label))
+
+  # Pi-weights (AR(inf))
+  pis <- -ARMAtoMA(ar = -model$model$theta, ma = -model$model$phi, lag.max = 72)
+  names(pis) <- paste("pi", 1:72)
+  cat("\nPi-weights (AR(inf)):\n")
+  print(pis[1:20])
+  plot(pis, type = "h", main = paste("Pi Weights -", label))
+}
+
+```
+
+
+### Validation model 1: 
+```{r}
+validation(mod1, d12lnserie)
+```
+
+### Validation model 2
+
+```{r}
+validation(mod2,d12lnserie)
+```
+
+
+### Mean zero Residuals
+```{r}
+t.test(mod1$residuals, mu = 0)
+sd(mod1$residuals)
+t.test(mod2$residuals, mu = 0)
+sd(mod2$residuals)
+
+```
+### Homoscedasticity
+
+```{r}
+check_heteroscedasticity <- function(model, data) {
+  require(lmtest)
+
+  resid <- residuals(model)
+  squared_resid <- resid^2
+  s <- frequency(get(model$series))
+
+  # 3 plots stacked vertically, increased height per plot
+  par(mfrow = c(3, 1))  # more margin for taller plots
+
+  # 1) Square Root of Absolute Residuals with scatter.smooth
+  scatter.smooth(sqrt(abs(resid)), main = "Square Root of Absolute Residuals",
+                 lpars = list(col = 2))
+
+  # 2) ACF of squared residuals
+  acf(squared_resid, main = "ACF of Squared Residuals", lag.max = 60, ylim = c(-1, 1))
+
+  # 3) PACF of squared residuals
+  pacf(squared_resid, main = "PACF of Squared Residuals", lag.max = 60, ylim = c(-1, 1))
+
+  # Breusch-Pagan test for heteroscedasticity
+  cat("\nBreusch-Pagan Test for Heteroscedasticity:\n")
+  obs <- get(model$series)
+  bp_test <- bptest(resid ~ I(obs - resid))
+  print(bp_test)
+  
+    if (bp_test$p.value < 0.05) {
+    cat("\n→ The Breusch-Pagan test suggests heteroscedasticity (p < 0.05).\n")
+  } else {
+    cat("\n→ No significant evidence of heteroscedasticity (p ≥ 0.05).\n")
+  }
+}
+```
+
+```{r}
+check_heteroscedasticity(mod1, d12lnserie)
+```
+
+
+
+### Stationarity and Inveritbility
+
+```{r}
+check_stationarity_invertibility(mod1, "SARIMA(2,0,1)(0,1,1)")
+```
+```{r}
+check_stationarity_invertibility(mod2, "SARIMA(1,0,2)(0,1,1)")
+```
+
+## Forecasting
+```{r}
 ultim=c(2018,12)
-mod1_pdq=c(2,1,1)
+mod1_pdq=c(2,0,1)
 mod1_PDQ=c(0,1,1)
 
-mod2_pdq=c(1,1,2)
+mod2_pdq=c(1,0,2)
 mod2_PDQ=c(0,1,1)
 
 
@@ -209,13 +527,14 @@ lnserie1=log(serie1)
 #lnserie2=window(d12lnserie,end=ultim)
 
 
-(mod1_A=arima(lnserie1,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12)))
-(mod1_B=arima(lnserie2,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12)))
+(mod1_A=arima(lnserie1,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12), include.mean = TRUE))
+(mod1_B=arima(lnserie2,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12), include.mean = TRUE))
 
-(mod2_A=arima(lnserie1,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12)))
-(mod2_B=arima(lnserie2,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12)))
+(mod2_A=arima(lnserie1,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12), include.mean = TRUE))
+(mod2_B=arima(lnserie2,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12), include.mean = TRUE))
 
 ```
+
 ```{r}
 mod1_pred=predict(mod1_B,n.ahead=12)
 mod1_pr<-ts(c(tail(lnserie2,1),mod1_pred$pred),start=ultim,freq=12)
@@ -241,6 +560,7 @@ abline(v=2014:2020,lty=3,col=4)
 ts.plot(serie,mod2_tl,mod2_tu,mod2_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2014,2020),type="o",main=paste("Model ARIMA(",paste(mod2_pdq,collapse=","),")(",paste(mod2_PDQ,collapse=","),")12",sep=""))
 abline(v=2014:2020,lty=3,col=4)
 ```
+
 ```{r}
 (previs=window(cbind(mod1_tl,mod1_pr,mod1_tu,serie,error=round(serie-mod1_pr,3)),start=ultim))
 
@@ -268,195 +588,7 @@ cat("\nMean Length CI mod1: ",mod1_mCI1)
 cat("\nMean Length CI mod2: ",mod2_mCI1)
 
 ```
-```{r}
-mod1_pred=predict(mod1_A,n.ahead=12)
-mod1_pr<-ts(c(tail(lnserie1,1),mod1_pred$pred),start=ultim+c(1,0),freq=12)
-mod1_se<-ts(c(0,mod1_pred$se),start=ultim+c(1,0),freq=12)
 
-mod2_pred=predict(mod2_A,n.ahead=12)
-mod2_pr<-ts(c(tail(lnserie1,1),mod2_pred$pred),start=ultim+c(1,0),freq=12)
-mod2_se<-ts(c(0,mod2_pred$se),start=ultim+c(1,0),freq=12)
-
-#Intervals
-mod1_tl1<-ts(exp(mod1_pr-1.96*mod1_se),start=ultim+c(1,0),freq=12)
-mod1_tu1<-ts(exp(mod1_pr+1.96*mod1_se),start=ultim+c(1,0),freq=12)
-mod1_pr1<-ts(exp(mod1_pr),start=ultim+c(1,0),freq=12)
-
-mod2_tl1<-ts(exp(mod2_pr-1.96*mod2_se),start=ultim+c(1,0),freq=12)
-mod2_tu1<-ts(exp(mod2_pr+1.96*mod2_se),start=ultim+c(1,0),freq=12)
-mod2_pr1<-ts(exp(mod2_pr),start=ultim+c(1,0),freq=12)
-
-ts.plot(serie,mod1_tl1,mod1_tu1,mod1_pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2015,2021),type="o",main=paste("Model ARIMA(",paste(mod1_pdq,collapse=","),")(",paste(mod1_PDQ,collapse=","),")12",sep=""))
-abline(v=2015:2021,lty=3,col=4)
-
-ts.plot(serie,mod2_tl1,mod2_tu1,mod2_pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2015,2021),type="o",main=paste("Model ARIMA(",paste(mod2_pdq,collapse=","),")(",paste(mod2_PDQ,collapse=","),")12",sep=""))
-abline(v=2015:2021,lty=3,col=4)
-```
-
-
-```{r}
-source("CalendarEffects.r")
-data=c(start(serie)[1],start(serie)[2], length(serie)) #starting year, month, series size
-length(serie)
-
-(wTradDays=Wtrad(data)) #creates auxiliary variable for trading days configurations (5/2 the ideal proportion)
-(wEast=Weaster(data)) #creates auxiliary variable for Easter configurations (half easter on March and other half on April: ideal distribution)
-
-
-#(mod1EC = arima(
- #       d12lnserie,
-  #      order=c(2,1,1),
-   #     seasonal = list(order=c(0,1,1), period = 12),#D=0 as we use d12lnserie
-    #    include.mean = TRUE, xreg=data.frame(wTradDays,wEast)))
-(mod1EC=arima(serie,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-
-(mod2EC=arima(serie,order=c(1,1,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-
-
-mod1_EfecTD=coef(mod1EC)["wTradDays"]*wTradDays
-mod1_EfecIN=coef(mod1EC)["wEast"]*wEast
-mod1_serieEC=serie-mod1_EfecTD-mod1_EfecIN
-plot(mod1_EfecTD+mod1_EfecIN)
-
-mod2_EfecTD=coef(mod2EC)["wTradDays"]*wTradDays
-mod2_EfecIN=coef(mod2EC)["wEast"]*wEast
-mod2_serieEC=serie-mod2_EfecTD-mod2_EfecIN
-plot(mod2_EfecTD+mod2_EfecIN)
-
-plot(serie)
-lines(mod1_serieEC,col=2)
-lines(mod2_serieEC,col=2)
-abline(v=1992:2020,lty=3,col=4)
-
-d1d12mod1_serieEC=diff(diff(mod1_serieEC,12))
-d1d12mod2_serieEC=diff(diff(mod2_serieEC,12))
-
-
-```
-```{r}
-source("atipics2.r")
-
-mod1EC.atip=outdetec(mod1EC,dif=c(1,12),crit=2.8,LS=T) # automatic detection of outliers with crit=2.8 and LS =TRUE
-mod2EC.atip=outdetec(mod2EC,dif=c(1,12),crit=2.8,LS=T)
-
-#Estimated residual variance after outliers detection and treatment
-mod1EC.atip$sigma
-mod2EC.atip$sigma
-
-
-atipics=mod.atip$atip[order(mod.atip$atip[,1]),]
-meses=c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic")
-
-data.frame(atipics,Fecha=paste(meses[(atipics[,1]-1)%%12+1],start(lnserie)[1]+((atipics[,1]-1)%/%12)),perc.Obs=exp(atipics[,3])*100)
-
-serie1.lin=lineal(serie,mod1EC.atip$atip)
-d1d12serie1.lin=diff(diff(serie1.lin,12))
-
-serie2.lin=lineal(serie,mod2EC.atip$atip)
-d1d12serie2.lin=diff(diff(serie2.lin,12))
-
-(mod1EC.lin=arima(serie.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-
-(mod2EC.lin=arima(serie.lin,order=c(1,1,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-
-mod1_EfecTD=coef(mod1EC.lin)["wTradDays"]*wTradDays
-mod1_EfecIN=coef(mod1EC.lin)["wEast"]*wEast
-mod1_serieEC.lin=serie1.lin-mod1_EfecTD-mod1_EfecIN
-plot(serie-mod1_serieEC.lin)
-
-mod2_EfecTD=coef(mod2EC.lin)["wTradDays"]*wTradDays
-mod2_EfecIN=coef(mod2EC.lin)["wEast"]*wEast
-mod2_serieEC.lin=serie2.lin-mod2_EfecTD-mod2_EfecIN
-plot(serie-mod2_serieEC.lin)
-
-plot(mod1_serieEC.lin,col=2)
-lines(serie)
-
-plot(mod2_serieEC.lin,col=2)
-lines(serie)
-
-```
-
-
-
-
-```{r}
-ultim=c(2018,12)
-mod1_pdq=c(2,1,1)
-mod1_PDQ=c(0,1,1)
-
-mod2_pdq=c(1,1,2)
-mod2_PDQ=c(0,1,1)
-
-
-serie2=window(serie,end=ultim)
-lnserie2=log(serie2)
-serie1=window(serie,end=ultim+c(1,0))
-lnserie1=log(serie1)
-
-#lnserie1=window(d12lnserie,end=ultim+c(1,0))
-#lnserie2=window(d12lnserie,end=ultim)
-
-
-(mod1_A=arima(serie.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-(mod1_B=arima(serie.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-
-(mod2_A=arima(serie.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-(mod2_B=arima(serie.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-
-```
-```{r}
-mod1_pred=predict(mod1_B,n.ahead=12)
-mod1_pr<-ts(c(tail(lnserie2,1),mod1_pred$pred),start=ultim,freq=12)
-mod1_se<-ts(c(0,mod1_pred$se),start=ultim,freq=12)
-
-mod2_pred=predict(mod2_B,n.ahead=12)
-mod2_pr<-ts(c(tail(lnserie2,1),mod2_pred$pred),start=ultim,freq=12)
-mod2_se<-ts(c(0,mod2_pred$se),start=ultim,freq=12)
-
-#Intervals
-mod1_tl<-ts(exp(mod1_pr-1.96*mod1_se),start=ultim,freq=12)
-mod1_tu<-ts(exp(mod1_pr+1.96*mod1_se),start=ultim,freq=12)
-mod1_pr<-ts(exp(mod1_pr),start=ultim,freq=12)
-
-mod2_tl<-ts(exp(mod2_pr-1.96*mod2_se),start=ultim,freq=12)
-mod2_tu<-ts(exp(mod2_pr+1.96*mod2_se),start=ultim,freq=12)
-mod2_pr<-ts(exp(mod2_pr),start=ultim,freq=12)
-
-
-ts.plot(serie,mod1_tl,mod1_tu,mod1_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2014,2020),type="o",main=paste("Model ARIMA(",paste(mod1_pdq,collapse=","),")(",paste(mod1_PDQ,collapse=","),")12",sep=""))
-abline(v=2014:2020,lty=3,col=4)
-
-ts.plot(serie,mod2_tl,mod2_tu,mod2_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2014,2020),type="o",main=paste("Model ARIMA(",paste(mod2_pdq,collapse=","),")(",paste(mod2_PDQ,collapse=","),")12",sep=""))
-abline(v=2014:2020,lty=3,col=4)
-```
-```{r}
-(previs=window(cbind(mod1_tl,mod1_pr,mod1_tu,serie,error=round(serie-mod1_pr,3)),start=ultim))
-
-obs=window(serie,start=ultim)
-
-mod1_mod.RMSE1=sqrt(sum((obs-mod1_pr)^2)/12)
-mod1_mod.MAE1=sum(abs(obs-mod1_pr))/12
-mod1_mod.RMSPE1=sqrt(sum(((obs-mod1_pr)/obs)^2)/12)
-mod1_mod.MAPE1=sum(abs(obs-mod1_pr)/obs)/12
-
-mod2_mod.RMSE1=sqrt(sum((obs-mod2_pr)^2)/12)
-mod2_mod.MAE1=sum(abs(obs-mod2_pr))/12
-mod2_mod.RMSPE1=sqrt(sum(((obs-mod2_pr)/obs)^2)/12)
-mod2_mod.MAPE1=sum(abs(obs-mod2_pr)/obs)/12
-
-data.frame("RMSE"=mod1_mod.RMSE1,"MAE"=mod1_mod.MAE1,"RMSPE"=mod1_mod.RMSPE1,"MAPE"=mod1_mod.MAPE1)
-
-data.frame("RMSE"=mod2_mod.RMSE1,"MAE"=mod2_mod.MAE1,"RMSPE"=mod2_mod.RMSPE1,"MAPE"=mod2_mod.MAPE1)
-
-mod1_mCI1=mean(mod1_tu-mod1_tl)
-mod2_mCI1=mean(mod2_tu-mod2_tl)
-
-
-cat("\nMean Length CI mod1: ",mod1_mCI1)
-cat("\nMean Length CI mod2: ",mod2_mCI1)
-
-```
 ```{r}
 mod1_pred=predict(mod1_A,n.ahead=12)
 mod1_pr<-ts(c(tail(lnserie1,1),mod1_pred$pred),start=ultim+c(1,0),freq=12)
