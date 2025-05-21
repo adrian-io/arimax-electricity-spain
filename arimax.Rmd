@@ -7,225 +7,43 @@ output: html_document
 # Final Project: ARIMAX model for Electricity Consumption in Spain
 
 ```{r}
-serie=window(ts(read.table("ConsumElec.dat"),start=1990,freq=12))
-plot(serie, main="Gross internal consumption of electrical energy in Spain", ylab="GwH")
-abline(v=1985:2020,lty=3,col=4)
+serie=window(ts(read.table("ConsumElec.dat"),start=1990,freq=12)) # load time series
+plot(serie, main="Gross internal consumption of electrical energy in Spain", ylab="GwH") # plot series
+abline(v=1985:2020,lty=3,col=4) # vertical lines per year
 serie
-```
-
-## A.1 Identification
-
-### Plot Annual Mean(12m) vs. Variance(12m) Boxplot -> Stationarity: constant var for each level 
-
--> higher variance for at higher consumption level -> non-constant var: non-stationary
-```{r}
-m=apply(matrix(serie,nr=12),2,mean)
-v=apply(matrix(serie,nr=12),2,var)
-plot(m,v,xlab="Yearly Mean",ylab="Yearly Variance",main="serie")
-abline(lm(v~m),col=2,lty=3,lwd=2)
-
-boxplot(serie~floor(time(serie)))
-```
-Clearly, an increasing variance confirmed. Thus a log transformation applied to stabilize the variance!
-
-```{r}
-lnserie=log(serie)
-plot(lnserie)
-
-m=apply(matrix(lnserie,nr=12),2,mean)
-v=apply(matrix(lnserie,nr=12),2,var)
-plot(m,v,xlab="Yearly Mean",ylab="Yearly Variance",main="lnserie")
-abline(lm(v~m),col=2,lty=3,lwd=2)
-
-boxplot(lnserie~floor(time(lnserie)))
-```
-
-Then, variance seemingly constant!
-
-
-
-
-
-### Month BoxPlot -> Yearly Seasonality
-```{r}
-monthplot(lnserie)
-
-plot(decompose(lnserie))
-
-```
-Clearly seasonality is present with s=12 months. Higher consumption in winter (for heating?). Higher again in July (AC cooling).
-
-Eliminate the seasonality applying a seasonal difference.
-```{r}
-d12lnserie=diff(lnserie,12)
-plot(d12lnserie)
-abline(h=0)
-abline(h=mean(d12lnserie),col=2)
-
-monthplot(d12lnserie)
-
-```
-```{r}
-cat("Var for d=0:", var(d12lnserie))
-```
-
-```{r}
-d1d12lnserie=diff(d12lnserie,1)
-plot(d1d12lnserie)
-abline(h=0)
-abline(h=mean(d1d12lnserie),col=2)
-
-cat("Var for d=1:", var(d1d12lnserie))
-
-# 2nd regular difference
-d1d1d12lnserie=diff(d1d12lnserie,1)
-plot(d1d1d12lnserie)
-abline(h=0)
-abline(h=mean(d1d1d12lnserie),col=2)
-cat("\nVar for d=2:", var(d1d1d12lnserie))
-```
---> One regular difference is sufficient. For d=2 the var increases again --> overdifferencing
-
-
-```{r}
-acf(d1d12lnserie, ylim=c(-1,1),col=c(2,rep(1,11)), lwd=2, lag.max=72)
-pacf(d1d12lnserie, ylim=c(-1,1),col=c(rep(1,11),2), lwd=2, lag.max=72)
-```
-P=1, 2, 3
-p = 1-5
-
-MA(1) because ACF shows 1 significant lag and then not
-PACF shows few small spikes, with no clear decay pattern → no strong AR structure.
-
-ARIMA(0,1,1) ← (no AR, MA(1))
-ARIMA(1,1,1) ← (weak AR(1), MA(1))
-
-ACF:
-Spike at lag 12 (not shown clearly in cropped plot but often visible if seasonal) → implies Q = 1
-
-P=0 or 1
-
---> not more due to sparsity
-
-SARIMA(0,1,1)(0,1,1)[12]	MA(1) + seasonal MA(1) — common baseline
-SARIMA(1,1,1)(0,1,1)[12]	Adds AR(1)
-SARIMA(1,1,1)(1,1,1)[12]	Full general model
-SARIMA(0,1,1)(1,1,0)[12]	MA(1) + seasonal AR(1)
-
-
-
-```{r}
-(mod1=arima(d1d12lnserie,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=12)))
-
-(data.frame("Estimate" = mod1$coef,"Lower Bound" = mod1$coef- 1.96 * diag(sqrt(mod1$var.coef)),"Upper Bound" = mod1$coef + 1.96 * diag(sqrt(mod1$var.coef))))
-
-```
-
-We use the CLT to assume that the estimates are asymptotically normal distributed and check if the 95% confidence interval of the estimates overlaps with 0.
-
-We see that the coefficient estimate for theta1 and Theta the 95% confidence interval does not overlap with 0. Thus we follow that the statement that these two coefficients are significant. The intercept is not statistically significant from 0, but with 95% confidence so small that we can neglect it and assume the intercept 0.
-
-
-```{r}
-# Define the models to test
-model_specs <- list(
-  "SARIMA(0,1,1)(0,1,1)[12]" = list(order = c(0,1,1), seasonal = c(0,1,1)),
-  "SARIMA(0,1,2)(0,1,2)[12]" = list(order = c(0,1,2), seasonal = c(0,1,2)),
-  "SARIMA(1,1,2)(1,1,2)[12]" = list(order = c(1,1,2), seasonal = c(1,1,2)),
-    "SARIMA(1,1,3)(1,1,3)[12]" = list(order = c(1,1,3), seasonal = c(1,1,3)),
-
-  "SARIMA(1,1,1)(0,1,1)[12]" = list(order = c(1,1,1), seasonal = c(0,1,1)),
-  "SARIMA(1,1,0)(1,1,0)[12]" = list(order = c(1,1,0), seasonal = c(1,1,0)),
-  "SARIMA(1,1,1)(1,1,1)[12]" = list(order = c(1,1,1), seasonal = c(1,1,1)),
-  "SARIMA(0,1,1)(1,1,0)[12]" = list(order = c(0,1,1), seasonal = c(1,1,0))
-)
-
-# Create an empty results list
-results <- list()
-
-# Loop through each model and fit
-for (model_name in names(model_specs)) {
-  spec <- model_specs[[model_name]]
-  fit <- arima(
-    d1d12lnserie,
-    order = spec$order,
-    seasonal = list(order = spec$seasonal, period = 12)
-  )
-
-  # Extract coefficient table with confidence intervals
-  se <- sqrt(diag(fit$var.coef))
-  coefs <- fit$coef
-  lower <- coefs - 1.96 * se
-  upper <- coefs + 1.96 * se
-  signif <- !(lower <= 0 & upper >= 0)
-
-  # Add to results list
-  results[[model_name]] <- list(
-    Coefs = coefs,
-    Significant = signif,
-    AIC = fit$aic,
-    BIC = AIC(fit, k = log(length(d1d12lnserie))),
-    LogLik = as.numeric(logLik(fit)),
-    Sigma2 = fit$sigma2
-  )
-}
-
-# Combine into a single data frame
-library(dplyr)
-
-summary_table <- bind_rows(lapply(names(results), function(name) {
-  res <- results[[name]]
-  data.frame(
-    Model = name,
-    AIC = res$AIC,
-    BIC = res$BIC,
-    LogLik = res$LogLik,
-    Sigma2 = res$Sigma2,
-    Coefs = paste(names(res$Coefs), round(res$Coefs, 3), sep = "=", collapse = "; "),
-    Significant = paste(names(res$Significant)[res$Significant], collapse = ", ")
-  )
-}), .id = NULL)
-
-# Print the summary table
-print(summary_table)
+lnserie=log(serie) # log-transform
 ```
 
 
 ```{r}
-ultim=c(2018,12)
-mod1_pdq=c(2,0,1)
-mod1_PDQ=c(0,1,1)
+ultim=c(2018,12) # last training observation
+mod1_pdq=c(2,0,1) # arima orders model 1
+mod1_PDQ=c(0,1,1) # seasonal orders model 1
+mod2_pdq=c(1,0,2) # arima orders model 2
+mod2_PDQ=c(0,1,1) # seasonal orders model 2
 
-mod2_pdq=c(1,0,2)
-mod2_PDQ=c(0,1,1)
-
-
-serie2=window(serie,end=ultim)
+serie2=window(serie,end=ultim) # training data
 lnserie2=log(serie2)
-serie1=window(serie,end=ultim+c(1,0))
+serie1=window(serie,end=ultim+c(1,0)) # includes forecast year
 lnserie1=log(serie1)
 
-#lnserie1=window(d12lnserie,end=ultim+c(1,0))
-#lnserie2=window(d12lnserie,end=ultim)
-
-
+# fit models to training and full data
 (mod1_A=arima(lnserie1,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12), include.mean = TRUE))
 (mod1_B=arima(lnserie2,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12), include.mean=TRUE))
-
 (mod2_A=arima(lnserie1,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12), include.mean=TRUE))
 (mod2_B=arima(lnserie2,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12), include.mean=TRUE))
 
 ```
 ```{r}
-mod1_pred=predict(mod1_B,n.ahead=12)
-mod1_pr<-ts(c(tail(lnserie2,1),mod1_pred$pred),start=ultim,freq=12)
-mod1_se<-ts(c(0,mod1_pred$se),start=ultim,freq=12)
+mod1_pred=predict(mod1_B,n.ahead=12) # forecast 12 steps
+mod1_pr<-ts(c(tail(lnserie2,1),mod1_pred$pred),start=ultim,freq=12) # add last value
+mod1_se<-ts(c(0,mod1_pred$se),start=ultim,freq=12) # se for interval
 
 mod2_pred=predict(mod2_B,n.ahead=12)
 mod2_pr<-ts(c(tail(lnserie2,1),mod2_pred$pred),start=ultim,freq=12)
 mod2_se<-ts(c(0,mod2_pred$se),start=ultim,freq=12)
 
-#Intervals
+# transform back and compute intervals
 mod1_tl<-ts(exp(mod1_pr-1.96*mod1_se),start=ultim,freq=12)
 mod1_tu<-ts(exp(mod1_pr+1.96*mod1_se),start=ultim,freq=12)
 mod1_pr<-ts(exp(mod1_pr),start=ultim,freq=12)
@@ -234,42 +52,44 @@ mod2_tl<-ts(exp(mod2_pr-1.96*mod2_se),start=ultim,freq=12)
 mod2_tu<-ts(exp(mod2_pr+1.96*mod2_se),start=ultim,freq=12)
 mod2_pr<-ts(exp(mod2_pr),start=ultim,freq=12)
 
-
+# plot forecasts and intervals
 ts.plot(serie,mod1_tl,mod1_tu,mod1_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2014,2020),type="o",main=paste("Model ARIMA(",paste(mod1_pdq,collapse=","),")(",paste(mod1_PDQ,collapse=","),")12",sep=""))
 abline(v=2014:2020,lty=3,col=4)
 
 ts.plot(serie,mod2_tl,mod2_tu,mod2_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2014,2020),type="o",main=paste("Model ARIMA(",paste(mod2_pdq,collapse=","),")(",paste(mod2_PDQ,collapse=","),")12",sep=""))
 abline(v=2014:2020,lty=3,col=4)
+
 ```
 ```{r}
-(previs=window(cbind(mod1_tl,mod1_pr,mod1_tu,serie,error=round(serie-mod1_pr,3)),start=ultim))
+(previs=window(cbind(mod1_tl,mod1_pr,mod1_tu,serie,error=round(serie-mod1_pr,3)),start=ultim)) # preview results
 
-obs=window(serie,start=ultim)
+obs=window(serie,start=ultim) # actual values
 
+# error metrics model 1
 mod1_mod.RMSE1=sqrt(sum((obs-mod1_pr)^2)/12)
 mod1_mod.MAE1=sum(abs(obs-mod1_pr))/12
 mod1_mod.RMSPE1=sqrt(sum(((obs-mod1_pr)/obs)^2)/12)
 mod1_mod.MAPE1=sum(abs(obs-mod1_pr)/obs)/12
 
+# error metrics model 2
 mod2_mod.RMSE1=sqrt(sum((obs-mod2_pr)^2)/12)
 mod2_mod.MAE1=sum(abs(obs-mod2_pr))/12
 mod2_mod.RMSPE1=sqrt(sum(((obs-mod2_pr)/obs)^2)/12)
 mod2_mod.MAPE1=sum(abs(obs-mod2_pr)/obs)/12
 
+# display metrics
 data.frame("RMSE"=mod1_mod.RMSE1,"MAE"=mod1_mod.MAE1,"RMSPE"=mod1_mod.RMSPE1,"MAPE"=mod1_mod.MAPE1)
-
 data.frame("RMSE"=mod2_mod.RMSE1,"MAE"=mod2_mod.MAE1,"RMSPE"=mod2_mod.RMSPE1,"MAPE"=mod2_mod.MAPE1)
 
-mod1_mCI1=mean(mod1_tu-mod1_tl)
-mod2_mCI1=mean(mod2_tu-mod2_tl)
-
+mod1_mCI1=mean(mod1_tu-mod1_tl) # mean ci width model 1
+mod2_mCI1=mean(mod2_tu-mod2_tl) # mean ci width model 2
 
 cat("\nMean Length CI mod1: ",mod1_mCI1)
 cat("\nMean Length CI mod2: ",mod2_mCI1)
 
 ```
 ```{r}
-mod1_pred=predict(mod1_A,n.ahead=12)
+mod1_pred=predict(mod1_A,n.ahead=12) # forecast using full series
 mod1_pr<-ts(c(tail(lnserie1,1),mod1_pred$pred),start=ultim+c(1,0),freq=12)
 mod1_se<-ts(c(0,mod1_pred$se),start=ultim+c(1,0),freq=12)
 
@@ -277,7 +97,7 @@ mod2_pred=predict(mod2_A,n.ahead=12)
 mod2_pr<-ts(c(tail(lnserie1,1),mod2_pred$pred),start=ultim+c(1,0),freq=12)
 mod2_se<-ts(c(0,mod2_pred$se),start=ultim+c(1,0),freq=12)
 
-#Intervals
+# intervals and back-transform
 mod1_tl1<-ts(exp(mod1_pr-1.96*mod1_se),start=ultim+c(1,0),freq=12)
 mod1_tu1<-ts(exp(mod1_pr+1.96*mod1_se),start=ultim+c(1,0),freq=12)
 mod1_pr1<-ts(exp(mod1_pr),start=ultim+c(1,0),freq=12)
@@ -286,33 +106,27 @@ mod2_tl1<-ts(exp(mod2_pr-1.96*mod2_se),start=ultim+c(1,0),freq=12)
 mod2_tu1<-ts(exp(mod2_pr+1.96*mod2_se),start=ultim+c(1,0),freq=12)
 mod2_pr1<-ts(exp(mod2_pr),start=ultim+c(1,0),freq=12)
 
+# forecast plots next year
 ts.plot(serie,mod1_tl1,mod1_tu1,mod1_pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2015,2021),type="o",main=paste("Model ARIMA(",paste(mod1_pdq,collapse=","),")(",paste(mod1_PDQ,collapse=","),")12",sep=""))
 abline(v=2015:2021,lty=3,col=4)
 
 ts.plot(serie,mod2_tl1,mod2_tu1,mod2_pr1,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=c(2015,2021),type="o",main=paste("Model ARIMA(",paste(mod2_pdq,collapse=","),")(",paste(mod2_PDQ,collapse=","),")12",sep=""))
 abline(v=2015:2021,lty=3,col=4)
+
 ```
 
 
 ```{r}
-source("CalendarEffects.r")
-data=c(start(serie)[1],start(serie)[2], length(serie)) #starting year, month, series size
-length(serie)
+source("CalendarEffects.r") # calendar vars
+data=c(start(serie)[1],start(serie)[2], length(serie)) # time info
+(wTradDays=Wtrad(data)) # trading days
+(wEast=Weaster(data)) # easter var
 
-(wTradDays=Wtrad(data)) #creates auxiliary variable for trading days configurations (5/2 the ideal proportion)
-(wEast=Weaster(data)) #creates auxiliary variable for Easter configurations (half easter on March and other half on April: ideal distribution)
-
-
-#(mod1EC = arima(
- #       d12lnserie,
-  #      order=c(2,1,1),
-   #     seasonal = list(order=c(0,1,1), period = 12),#D=0 as we use d12lnserie
-    #    include.mean = TRUE, xreg=data.frame(wTradDays,wEast)))
+# arimax models with calendar
 (mod1EC=arima(serie,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
-
 (mod2EC=arima(serie,order=c(1,0,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
 
-
+# calendar effect adjustments
 mod1_EfecTD=coef(mod1EC)["wTradDays"]*wTradDays
 mod1_EfecIN=coef(mod1EC)["wEast"]*wEast
 mod1_serieEC=serie-mod1_EfecTD-mod1_EfecIN
@@ -328,35 +142,32 @@ lines(mod1_serieEC,col=2)
 lines(mod2_serieEC,col=2)
 abline(v=1992:2020,lty=3,col=4)
 
-d1d12mod1_serieEC=diff(diff(mod1_serieEC,12))
+d1d12mod1_serieEC=diff(diff(mod1_serieEC,12)) # differenced
 d1d12mod2_serieEC=diff(diff(mod2_serieEC,12))
-
 
 ```
 ```{r}
-source("atipics2.r")
+source("atipics2.r") # outlier detection
 
-mod1EC.atip=outdetec(mod1EC,dif=c(1,12),crit=2.8,LS=T) # automatic detection of outliers with crit=2.8 and LS =TRUE
+mod1EC.atip=outdetec(mod1EC,dif=c(1,12),crit=2.8,LS=T)
 mod2EC.atip=outdetec(mod2EC,dif=c(1,12),crit=2.8,LS=T)
 
-#Estimated residual variance after outliers detection and treatment
-mod1EC.atip$sigma
+mod1EC.atip$sigma # variance after correction
 mod2EC.atip$sigma
 
-
-atipics=mod1EC.atip$atip[order(mod1EC.atip$atip[,1]),]
+atipics=mod1EC.atip$atip[order(mod1EC.atip$atip[,1]),] # sort
 meses=c("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic")
 
 data.frame(atipics,Fecha=paste(meses[(atipics[,1]-1)%%12+1],start(lnserie)[1]+((atipics[,1]-1)%/%12)),perc.Obs=exp(atipics[,3])*100)
 
+# linearize
 serie1.lin=lineal(serie,mod1EC.atip$atip)
-d1d12serie1.lin=diff(diff(serie1.lin,12))
-
 serie2.lin=lineal(serie,mod2EC.atip$atip)
+d1d12serie1.lin=diff(diff(serie1.lin,12))
 d1d12serie2.lin=diff(diff(serie2.lin,12))
 
+# refit models to linearized series
 (mod1EC.lin=arima(serie1.lin,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
-
 (mod2EC.lin=arima(serie2.lin,order=c(1,0,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
 
 mod1_EfecTD=coef(mod1EC.lin)["wTradDays"]*wTradDays
@@ -371,7 +182,6 @@ plot(serie-mod2_serieEC.lin)
 
 plot(mod1_serieEC.lin,col=2)
 lines(serie)
-
 plot(mod2_serieEC.lin,col=2)
 lines(serie)
 
@@ -379,68 +189,112 @@ lines(serie)
 
 
 ```{r}
-ultim=c(2018,12)
+ultim=c(2018,12) # forecast point
 
+# windows for model fitting
+serie1.lin1=window(serie1.lin,end=ultim+c(1,0))
+serie1.lin2=window(serie1.lin,end=ultim)
+serie2.lin1=window(serie2.lin,end=ultim+c(1,0))
+serie2.lin2=window(serie2.lin,end=ultim)
 
-serie.lin1=window(serie1.lin,end=ultim+c(1,0))
-serie.lin2=window(serie1.lin,end=ultim)
 wTradDays2=window(wTradDays,end=ultim)
 wEast2=window(wEast,end=ultim)
 
-(mod1EC.lin=arima(serie.lin1,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
-(mod1EC.lin2=arima(serie.lin2,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2), include.mean=TRUE))
+# refit models to linearized series
+(mod1EC.lin=arima(serie1.lin1,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
+(mod1EC.lin2=arima(serie1.lin2,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2), include.mean=TRUE))
+(mod2EC.lin=arima(serie2.lin1,order=c(1,0,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
+(mod2EC.lin2=arima(serie2.lin2,order=c(1,0,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2), include.mean=TRUE))
 
 ```
 
 ```{r}
-pred=predict(mod1EC.lin2,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
-predic=pred$pr
-wLS=sum(mod1EC.atip$atip[mod1EC.atip$atip$type_detected=="LS" & mod1EC.atip$atip$Obs<=length(serie)-12,3])
-pr<-ts(c(tail(serie2,1),predic+wLS),start=ultim,freq=12)
+# forecast model 1
+mod1_pred=predict(mod1EC.lin2,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
+mod1_predic=mod1_pred$pr
+mod1_wLS=sum(mod1EC.atip$atip[mod1EC.atip$atip$type_detected=="LS" & mod1EC.atip$atip$Obs<=length(serie)-12,3]) # correct level shift
+mod1_pr<-ts(c(tail(serie2,1),mod1_predic+mod1_wLS),start=ultim,freq=12)
+mod1_se<-ts(c(0,mod1_pred$se),start=ultim,freq=12)
 
+# forecast model 2
+mod2_pred=predict(mod2EC.lin2,n.ahead=12,newxreg=window(cbind(wTradDays,wEast),start=c(ultim[1]+1,1)))
+mod2_predic=mod2_pred$pr
+mod2_wLS=sum(mod2EC.atip$atip[mod2EC.atip$atip$type_detected=="LS" & mod2EC.atip$atip$Obs<=length(serie)-12,3])
+mod2_pr<-ts(c(tail(serie2,1),mod2_predic+mod2_wLS),start=ultim,freq=12)
+mod2_se<-ts(c(0,mod2_pred$se),start=ultim,freq=12)
 
-se<-ts(c(0,pred$se),start=ultim,freq=12)
+# ci bounds
+mod1_tl<-ts(mod1_pr-1.96*mod1_se,start=ultim,freq=12)
+mod1_tu<-ts(mod1_pr+1.96*mod1_se,start=ultim,freq=12)
+mod1_pr<-ts(mod1_pr,start=ultim,freq=12)
 
-#Intervals
-tl<-ts(pr-1.96*se,start=ultim,freq=12)
-tu<-ts(pr+1.96*se,start=ultim,freq=12)
-pr<-ts(pr,start=ultim,freq=12)
+mod2_tl<-ts(mod2_pr-1.96*mod2_se,start=ultim,freq=12)
+mod2_tu<-ts(mod2_pr+1.96*mod2_se,start=ultim,freq=12)
+mod2_pr<-ts(mod2_pr,start=ultim,freq=12)
 
-ts.plot(serie,tl,tu,pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,2),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+TD+IC+Outliers")
+# plot forecasts
+ts.plot(serie,mod1_tl,mod1_tu,mod1_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,2),type="o",main="Model ARIMA(2,0,1)(0,1,1)12+TD+IC+Outliers")
 abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
+ts.plot(serie,mod2_tl,mod2_tu,mod2_pr,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-3,2),type="o",main="Model ARIMA(1,0,2)(0,1,1)12+TD+IC+Outliers")
+abline(v=(ultim[1]-3):(ultim[1]+2),lty=3,col=4)
+
 ```
 
 ```{r}
-obs=window(serie,start=ultim)
-mod.RMSE3=sqrt(sum((obs-pr)^2)/12)
-mod.MAE3=sum(abs(obs-pr))/12
-mod.RMSPE3=sqrt(sum(((obs-pr)/obs)^2)/12)
-mod.MAPE3=sum(abs(obs-pr)/obs)/12
+obs=window(serie,start=ultim) # actual 2019
 
-data.frame("RMSE"=mod.RMSE3,"MAE"=mod.MAE3,"RMSPE"=mod.RMSPE3,"MAPE"=mod.MAPE3)
+# model 1 errors
+mod1.RMSE3=sqrt(sum((obs-mod1_pr)^2)/12)
+mod1.MAE3=sum(abs(obs-mod1_pr))/12
+mod1.RMSPE3=sqrt(sum(((obs-mod1_pr)/obs)^2)/12)
+mod1.MAPE3=sum(abs(obs-mod1_pr)/obs)/12
 
-mCI3=sum(tu-tl)/12
+# model 2 errors
+mod2.RMSE3=sqrt(sum((obs-mod2_pr)^2)/12)
+mod2.MAE3=sum(abs(obs-mod2_pr))/12
+mod2.RMSPE3=sqrt(sum(((obs-mod2_pr)/obs)^2)/12)
+mod2.MAPE3=sum(abs(obs-mod2_pr)/obs)/12
 
-cat("\nMean Length CI: ",mCI3)
+# show results
+data.frame("RMSE"=mod1.RMSE3,"MAE"=mod1.MAE3,"RMSPE"=mod1.RMSPE3,"MAPE"=mod1.MAPE3)
+data.frame("RMSE"=mod2.RMSE3,"MAE"=mod2.MAE3,"RMSPE"=mod2.RMSPE3,"MAPE"=mod2.MAPE3)
+
 ```
 
 ```{r}
-data3=c(ultim[1]+2, 1, 12)
+data3=c(ultim[1]+2, 1, 12) # forecast 2020
+wTradDays3=Wtrad(data3) # td 2020
+wEast3=Weaster(data3) # easter 2020
 
-wTradDays3=Wtrad(data3)
-wEast3=Weaster(data3)
-pred=predict(modEC.lin,n.ahead=12,newxreg=data.frame(wTradDays3,wEast3))
-predic=pred$pr
-wLS=sum(mod1EC.atip$atip[mod1EC.atip$atip$type_detected=="LS",3])
-pr<-ts(c(serie[length(serie)],predic+wLS),start=ultim+c(1,0),freq=12)
-se<-ts(c(0,pred$se),start=ultim+c(1,0),freq=12)
+# model 1 forecast 2020
+mod1_pred=predict(mod1EC.lin,n.ahead=12,newxreg=data.frame(wTradDays3,wEast3))
+mod1_predic=mod1_pred$pr
+mod1_wLS=sum(mod1EC.atip$atip[mod1EC.atip$atip$type_detected=="LS",3])
+mod1_pr<-ts(c(serie[length(serie)],mod1_predic+mod1_wLS),start=ultim+c(1,0),freq=12)
+mod1_se<-ts(c(0,mod1_pred$se),start=ultim+c(1,0),freq=12)
 
-#Intervals
-tl3<-ts(pr-1.96*se,start=ultim+c(1,0),freq=12)
-tu3<-ts(pr+1.96*se,start=ultim+c(1,0),freq=12)
-pr3<-ts(pr,start=ultim+c(1,0),freq=12)
+# model 2 forecast 2020
+mod2_pred=predict(mod2EC.lin,n.ahead=12,newxreg=data.frame(wTradDays3,wEast3))
+mod2_predic=mod2_pred$pr
+mod2_wLS=sum(mod2EC.atip$atip[mod2EC.atip$atip$type_detected=="LS",3])
+mod2_pr<-ts(c(serie[length(serie)],mod2_predic+mod2_wLS),start=ultim+c(1,0),freq=12)
+mod2_se<-ts(c(0,mod2_pred$se),start=ultim+c(1,0),freq=12)
 
-ts.plot(serie,tl3,tu3,pr3,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-2,3),type="o",main="Model ARIMA(0,1,1)(0,1,1)12+CE+IA+Outliers")
+# prediction intervals
+mod1_tl3<-ts(mod1_pr-1.96*mod1_se,start=ultim+c(1,0),freq=12)
+mod1_tu3<-ts(mod1_pr+1.96*mod1_se,start=ultim+c(1,0),freq=12)
+mod1_pr3<-ts(mod1_pr,start=ultim+c(1,0),freq=12)
+
+mod2_tl3<-ts(mod2_pr-1.96*mod2_se,start=ultim+c(1,0),freq=12)
+mod2_tu3<-ts(mod2_pr+1.96*mod2_se,start=ultim+c(1,0),freq=12)
+mod2_pr3<-ts(mod2_pr,start=ultim+c(1,0),freq=12)
+
+# forecast plot 2020
+ts.plot(serie,mod1_tl3,mod1_tu3,mod1_pr3,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-2,3),type="o",main="Model ARIMA(2,0,1)(0,1,1)12+CE+IA+Outliers")
 abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
+
+ts.plot(serie,mod2_tl3,mod2_tu3,mod2_pr3,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-2,3),type="o",main="Model ARIMA(2,0,1)(0,1,1)12+CE+IA+Outliers")
+abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
+
 ```
 
