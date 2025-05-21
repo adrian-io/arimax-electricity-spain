@@ -193,10 +193,10 @@ print(summary_table)
 
 ```{r}
 ultim=c(2018,12)
-mod1_pdq=c(2,1,1)
+mod1_pdq=c(2,0,1)
 mod1_PDQ=c(0,1,1)
 
-mod2_pdq=c(1,1,2)
+mod2_pdq=c(1,0,2)
 mod2_PDQ=c(0,1,1)
 
 
@@ -209,11 +209,11 @@ lnserie1=log(serie1)
 #lnserie2=window(d12lnserie,end=ultim)
 
 
-(mod1_A=arima(lnserie1,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12)))
-(mod1_B=arima(lnserie2,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12)))
+(mod1_A=arima(lnserie1,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12), include.mean = TRUE))
+(mod1_B=arima(lnserie2,order=mod1_pdq,seasonal=list(order=mod1_PDQ,period=12), include.mean=TRUE))
 
-(mod2_A=arima(lnserie1,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12)))
-(mod2_B=arima(lnserie2,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12)))
+(mod2_A=arima(lnserie1,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12), include.mean=TRUE))
+(mod2_B=arima(lnserie2,order=mod2_pdq,seasonal=list(order=mod2_PDQ,period=12), include.mean=TRUE))
 
 ```
 ```{r}
@@ -308,9 +308,9 @@ length(serie)
   #      order=c(2,1,1),
    #     seasonal = list(order=c(0,1,1), period = 12),#D=0 as we use d12lnserie
     #    include.mean = TRUE, xreg=data.frame(wTradDays,wEast)))
-(mod1EC=arima(serie,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod1EC=arima(serie,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
 
-(mod2EC=arima(serie,order=c(1,1,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod2EC=arima(serie,order=c(1,0,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
 
 
 mod1_EfecTD=coef(mod1EC)["wTradDays"]*wTradDays
@@ -355,9 +355,9 @@ d1d12serie1.lin=diff(diff(serie1.lin,12))
 serie2.lin=lineal(serie,mod2EC.atip$atip)
 d1d12serie2.lin=diff(diff(serie2.lin,12))
 
-(mod1EC.lin=arima(serie1.lin,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod1EC.lin=arima(serie1.lin,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
 
-(mod2EC.lin=arima(serie2.lin,order=c(1,1,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
+(mod2EC.lin=arima(serie2.lin,order=c(1,0,2),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
 
 mod1_EfecTD=coef(mod1EC.lin)["wTradDays"]*wTradDays
 mod1_EfecIN=coef(mod1EC.lin)["wEast"]*wEast
@@ -387,8 +387,8 @@ serie.lin2=window(serie1.lin,end=ultim)
 wTradDays2=window(wTradDays,end=ultim)
 wEast2=window(wEast,end=ultim)
 
-(mod1EC.lin=arima(serie.lin1,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast)))
-(mod1EC.lin2=arima(serie.lin2,order=c(2,1,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2)))
+(mod1EC.lin=arima(serie.lin1,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays,wEast), include.mean=TRUE))
+(mod1EC.lin2=arima(serie.lin2,order=c(2,0,1),seasonal=list(order=c(0,1,1),period=12),xreg=data.frame(wTradDays2,wEast2), include.mean=TRUE))
 
 ```
 
