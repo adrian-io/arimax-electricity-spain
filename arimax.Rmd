@@ -147,7 +147,7 @@ d1d12mod2_serieEC=diff(diff(mod2_serieEC,12))
 
 ```
 ```{r}
-source("atipics2.r") # outlier detection
+source("atipics2.R") # outlier detection
 
 mod1EC.atip=outdetec(mod1EC,dif=c(1,12),crit=2.8,LS=T)
 mod2EC.atip=outdetec(mod2EC,dif=c(1,12),crit=2.8,LS=T)
@@ -293,7 +293,7 @@ mod2_pr3<-ts(mod2_pr,start=ultim+c(1,0),freq=12)
 ts.plot(serie,mod1_tl3,mod1_tu3,mod1_pr3,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-2,3),type="o",main="Model ARIMA(2,0,1)(0,1,1)12+CE+IA+Outliers")
 abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
 
-ts.plot(serie,mod2_tl3,mod2_tu3,mod2_pr3,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-2,3),type="o",main="Model ARIMA(2,0,1)(0,1,1)12+CE+IA+Outliers")
+ts.plot(serie,mod2_tl3,mod2_tu3,mod2_pr3,lty=c(1,2,2,1),col=c(1,4,4,2),xlim=ultim[1]+c(-2,3),type="o",main="Model ARIMA(1,0,2)(0,1,1)12+CE+IA+Outliers")
 abline(v=(ultim[1]-2):(ultim[1]+3),lty=3,col=4)
 
 ```
